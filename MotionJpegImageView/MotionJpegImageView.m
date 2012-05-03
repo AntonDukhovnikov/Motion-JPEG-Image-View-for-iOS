@@ -1,9 +1,15 @@
 //
-//  MotionJpegImageView.mm
+//  MotionJpegImageView.m
 //  VideoTest
 //
 //  Created by Matthew Eagar on 10/3/11.
 //  Copyright 2011 ThinkFlood Inc. All rights reserved.
+//
+//  Modified by Anton Dukhovnikov on 3/5/12.
+//      ARCified.
+//      Fixed to work with Interface Builder.
+//      Fixed to work with video streamed with GStreamer.
+//      Fixed bug with constantly growing buffer.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -30,31 +36,21 @@
 @class CredentialAlertView;
 
 @protocol CredentialAlertDelegate <NSObject>
-
 - (void)credentialAlertCancelled:(CredentialAlertView *)alert;
 - (void)credentialAlertSaved:(CredentialAlertView *)alert;
-
 @end
 
-@interface CredentialAlertView : UIAlertView
-                                <UITextFieldDelegate, 
-                                 UIAlertViewDelegate>
-{
-    
-@private
+@interface CredentialAlertView : UIAlertView <UITextFieldDelegate, UIAlertViewDelegate>
+{    
     UITextField *_usernameField;
     UITextField *_passwordField;
-    id<CredentialAlertDelegate> _credentialDelegate;
-    
 }
 
 @property (nonatomic, readwrite, copy) NSString *username;
 @property (nonatomic, readwrite, copy) NSString *password;
-@property (nonatomic, readwrite, assign) id<CredentialAlertDelegate> credentialDelegate;
+@property (nonatomic, readwrite, unsafe_unretained) id<CredentialAlertDelegate> credentialDelegate;
 
-- (id)initWithDelegate:(id<CredentialAlertDelegate>)delegate 
-               forHost:(NSString *)hostName;
-
+- (id)initWithDelegate:(id<CredentialAlertDelegate>)delegate forHost:(NSString *)hostName;
 @end
 
 #pragma mark - Constants
@@ -114,7 +110,6 @@
         _usernameField.returnKeyType = UIReturnKeyNext;
         _usernameField.clearButtonMode = UITextFieldViewModeUnlessEditing;
         [self addSubview:_usernameField];
-        [_usernameField release];
         
         _passwordField = [[UITextField alloc] initWithFrame:CGRectZero];
         _passwordField.secureTextEntry = YES;
@@ -127,7 +122,6 @@
         _passwordField.returnKeyType = UIReturnKeyDone;
         _passwordField.clearButtonMode = UITextFieldViewModeUnlessEditing;
         [self addSubview:_passwordField];
-        [_passwordField release];
     }
     
     return self;
@@ -135,9 +129,6 @@
 
 #pragma mark - Overrides
 
-- (void)dealloc {
-    [super dealloc];
-}
 
 - (void)setFrame:(CGRect)frame {
     frame.size.height = ALERT_HEIGHT;
@@ -185,13 +176,13 @@
         } 
     }
     
-    CGFloat buttonViewTop = 0.0;
+//    CGFloat buttonViewTop = 0.0;
     for (UIView *buttonView in buttonViews) {
         CGRect buttonViewFrame = buttonView.frame;
         buttonViewFrame.origin.y = 
         self.bounds.size.height - buttonViewFrame.size.height - BUTTON_MARGIN;
         buttonView.frame = buttonViewFrame;
-        buttonViewTop = CGRectGetMinY(buttonViewFrame);
+//        buttonViewTop = CGRectGetMinY(buttonViewFrame);
     }
     
     CGRect labelFrame = messageLabel.frame;
@@ -276,7 +267,10 @@ static NSData *_endMarkerData = nil;
 #pragma mark - Private Method Declarations
 
 @interface MotionJpegImageView () <CredentialAlertDelegate>
-
+{
+    NSURLConnection *_connection;
+    NSMutableData *_receivedData;
+}
 - (void)cleanupConnection;
 
 @end
@@ -319,159 +313,159 @@ static NSData *_endMarkerData = nil;
     return self;
 }
 
+- (id)initWithCoder:(NSCoder *)aDecoder
+{
+    self = [super initWithCoder:aDecoder];
+    
+    if (self) 
+    {
+        _url = nil;
+        _receivedData = nil;
+        _username = nil;
+        _password = nil;
+        _allowSelfSignedCertificates = NO;
+        
+        if (_endMarkerData == nil) 
+        {
+            uint8_t endMarker[2] = END_MARKER_BYTES;
+            _endMarkerData = [[NSData alloc] initWithBytes:endMarker length:2];
+        }
+        
+        self.contentMode = UIViewContentModeScaleAspectFit;
+    }
+    
+    return self;    
+}
+
 #pragma mark - Overrides
 
-- (void)dealloc {
-    if (_connection) {
+- (void)dealloc 
+{
+    if (_connection) 
+    {
         [_connection cancel];
         [self cleanupConnection];
     }
-    
-    if (_url) {
-        [_url release];
-    }
-    
-    if (_username) {
-        [_username release];
-    }
-    
-    if (_password) {
-        [_password release];
-    }
-    
-    [super dealloc];
 }
 
 #pragma mark - Public Methods
 
-- (void)play {
-    if (_connection) {
+- (void)play 
+{
+    if (_connection) 
+    {
         // continue
     }
-    else if (_url) {
-        _connection = [[NSURLConnection alloc] initWithRequest:[NSURLRequest requestWithURL:_url]
-                                                      delegate:self];
+    else if (_url) 
+    {
+        _connection = [[NSURLConnection alloc] initWithRequest:[NSURLRequest requestWithURL:_url] delegate:self];
     }
 }
 
-- (void)pause {
-    if (_connection) {
+- (void)pause 
+{
+    if (_connection) 
+    {
         [_connection cancel];
         [self cleanupConnection];
     }
 }
 
-- (void)clear {
+- (void)clear 
+{
     self.image = nil;
 }
 
-- (void)stop {
+- (void)stop 
+{
     [self pause];
     [self clear];
 }
 
 #pragma mark - Private Methods
 
-- (void)cleanupConnection {
-    if (_connection) {
-        [_connection release];
-        _connection = nil;
-    }
-    
-    if (_receivedData) {
-        [_receivedData release];
-        _receivedData = nil;
-    }
+- (void)cleanupConnection 
+{
+    _connection = nil;
+    _receivedData = nil;
 }
 
 #pragma mark - NSURLConnection Delegate Methods
 
-- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response {
-    if (_receivedData) {
-        [_receivedData release];
-    }
-    
+- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response 
+{    
     _receivedData = [[NSMutableData alloc] init];
 }
 
-- (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
+- (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data 
+{
     [_receivedData appendData:data];
     
-    NSRange endRange = [_receivedData rangeOfData:_endMarkerData 
-                                          options:0 
-                                            range:NSMakeRange(0, _receivedData.length)];
+    NSRange endRange = [_receivedData rangeOfData:_endMarkerData options:0 range:NSMakeRange(0, _receivedData.length)];
     
     long long endLocation = endRange.location + endRange.length;
-    if (_receivedData.length >= endLocation) {
+    if (_receivedData.length >= endLocation) 
+    {
         NSData *imageData = [_receivedData subdataWithRange:NSMakeRange(0, endLocation)];
         UIImage *receivedImage = [UIImage imageWithData:imageData];
-        if (receivedImage) {
+        if (receivedImage) 
+        {
             self.image = receivedImage;
         }
+        [_receivedData replaceBytesInRange:NSMakeRange(0, endLocation) withBytes:NULL length:0];
     }
 }
 
-- (void)connectionDidFinishLoading:(NSURLConnection *)connection {
+- (void)connectionDidFinishLoading:(NSURLConnection *)connection 
+{
     [self cleanupConnection];
 }
 
--                    (BOOL)connection:(NSURLConnection *)connection 
-canAuthenticateAgainstProtectionSpace:(NSURLProtectionSpace *)protectionSpace {
-    BOOL allow = NO;
-    if ([protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust]) {
-        allow = _allowSelfSignedCertificates;
-    }
-    else {
-        allow = _allowClearTextCredentials;
-    }
-    
-    return allow;
+- (BOOL)connection:(NSURLConnection *)connection canAuthenticateAgainstProtectionSpace:(NSURLProtectionSpace *)protectionSpace 
+{
+    return [protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust] ? _allowSelfSignedCertificates : _allowClearTextCredentials;
 }
 
--                (void)connection:(NSURLConnection *)connection 
-didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge {
+- (void)connection:(NSURLConnection *)connection didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge 
+{
     if ([challenge previousFailureCount] == 0 &&
         _username && _username.length > 0 &&
-        _password && _password.length > 0) {
-        NSURLCredential *credentials = 
-            [NSURLCredential credentialWithUser:_username
-                                       password:_password
-                                    persistence:NSURLCredentialPersistenceForSession];
-        [[challenge sender] useCredential:credentials
-               forAuthenticationChallenge:challenge];
+        _password && _password.length > 0) 
+    {
+        NSURLCredential *credentials = [NSURLCredential credentialWithUser:_username password:_password persistence:NSURLCredentialPersistenceForSession];
+        [[challenge sender] useCredential:credentials forAuthenticationChallenge:challenge];
     }
-    else {
+    else 
+    {
         [[challenge sender] cancelAuthenticationChallenge:challenge];
         [self cleanupConnection];
         
-        CredentialAlertView *loginAlert = 
-            [[CredentialAlertView alloc] initWithDelegate:self
-                                                  forHost:_url.host];
+        CredentialAlertView *loginAlert = [[CredentialAlertView alloc] initWithDelegate:self forHost:_url.host];
         loginAlert.username = self.username;
         [loginAlert show];
     }
 }
 
-- (BOOL)connectionShouldUseCredentialStorage:(NSURLConnection *)connection {
+- (BOOL)connectionShouldUseCredentialStorage:(NSURLConnection *)connection 
+{
     return YES;
 }
 
-- (void)connection:(NSURLConnection *)connection 
-  didFailWithError:(NSError *)error {
+- (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error 
+{
     [self cleanupConnection];
 }
 
 #pragma mark - CredentialAlertView Delegate Methods
 
-- (void)credentialAlertCancelled:(CredentialAlertView *)alert {
-    [alert release];
+- (void)credentialAlertCancelled:(CredentialAlertView *)alert 
+{
 }
 
-- (void)credentialAlertSaved:(CredentialAlertView *)alert {
+- (void)credentialAlertSaved:(CredentialAlertView *)alert 
+{
     self.username = alert.username;
     self.password = alert.password;
-    [alert release];
-    
     [self play];
 }
 

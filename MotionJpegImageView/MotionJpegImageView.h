@@ -5,6 +5,12 @@
 //  Created by Matthew Eagar on 10/3/11.
 //  Copyright 2011 ThinkFlood Inc. All rights reserved.
 //
+//  Modified by Anton Dukhovnikov on 3/5/12.
+//      ARCified.
+//      Fixed to work with Interface Builder.
+//      Fixed to work with video streamed with GStreamer.
+//      Fixed bug with constantly growing buffer.
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
@@ -25,19 +31,7 @@
 
 #import <UIKit/UIKit.h>
 
-@interface MotionJpegImageView : UIImageView {
-    
-@private
-    NSURL *_url;
-    NSURLConnection *_connection;
-    NSMutableData *_receivedData;
-    NSString *_username;
-    NSString *_password;
-    BOOL _allowSelfSignedCertificates;
-    BOOL _allowClearTextCredentials;
-    
-}
-
+@interface MotionJpegImageView : UIImageView 
 @property (nonatomic, readwrite, copy) NSURL *url;
 @property (readonly) BOOL isPlaying;
 @property (nonatomic, readwrite, copy) NSString *username;
@@ -49,5 +43,4 @@
 - (void)pause;
 - (void)clear;
 - (void)stop;
-
 @end
